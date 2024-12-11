@@ -13,6 +13,7 @@ exports.getMoviesByCity = async (req, res) => {
         m.id AS movie_id,
         m.title AS movie_title,
         m.genre,
+        m.release_date,
         m.poster_url
       FROM Movies m
       JOIN Shows s ON s.movie_id = m.id
@@ -28,6 +29,7 @@ exports.getMoviesByCity = async (req, res) => {
       id: row.movie_id,
       title: row.movie_title,
       genre: row.genre,
+      release_date: row.release_date,
       poster_url: row.poster_url,
     }));
 
@@ -37,8 +39,6 @@ exports.getMoviesByCity = async (req, res) => {
     res.status(500).json({ error: "Error fetching movies." });
   }
 };
-
-
 
 exports.getTheatresAndShowsByMovie = async (req, res) => {
   const { movieId } = req.params; // Extract movieId from route parameters
@@ -51,6 +51,7 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
   try {
     const query = `
       SELECT 
+        m.title AS movie_name,
         t.id AS theatre_id,
         t.name AS theatre_name,
         scr.id AS screen_id,
@@ -59,17 +60,21 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
         s.start_time,
         s.end_time,
         s.price
-      FROM Theaters t
-      JOIN Screens scr ON t.id = scr.theater_id
-      JOIN Shows s ON scr.id = s.screen_id
+      FROM Movies m
+      JOIN Shows s ON m.id = s.movie_id
+      JOIN Screens scr ON s.screen_id = scr.id
+      JOIN Theaters t ON scr.theater_id = t.id
       WHERE s.movie_id = $1 AND t.location = $2
       ORDER BY t.id, s.start_time;
     `;
 
     const result = await pool.query(query, [movieId, city]);
 
+    let movieName = null;
+
     const theatres = result.rows.reduce((acc, row) => {
       const {
+        movie_name,
         theatre_id,
         theatre_name,
         screen_id,
@@ -79,6 +84,11 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
         end_time,
         price,
       } = row;
+
+      // Capture movie name from the first row
+      if (!movieName) {
+        movieName = movie_name;
+      }
 
       // Check if the theatre already exists in the response
       let theatre = acc.find((t) => t.id === theatre_id);
@@ -106,7 +116,7 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
       return acc;
     }, []);
 
-    res.status(200).json(theatres);
+    res.status(200).json({ movieName, theatres });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: "Error fetching theatres and shows." });

@@ -8,6 +8,10 @@ const register = async (req, res) => {
   const { firstname, lastname, email, password_hash, phone, location } = req.body;
 
   try {
+    const user = await userModel.findUserByEmail(email);
+    if (user) {
+      return res.status(404).send({ error: "User already exixts" });
+    }
     const hashedPassword = await bcrypt.hash(password_hash, 10);
     await userModel.createUser(firstname, lastname, email, hashedPassword, phone, location);
     res.status(201).send({ message: "User registered successfully" });
