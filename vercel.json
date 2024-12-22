@@ -1,0 +1,23 @@
+{
+    "version": 2,
+    "builds": [
+      {
+        "src": "server.js",
+        "use": "@vercel/node"
+      }
+    ],
+    "routes": [
+      {
+        "src": "/(.*)",
+        "dest": "server.js"
+      }
+    ],
+    "env": {
+      "DB_USER": "postgres",
+      "DB_PASSWORD": "Swaroop2004",
+      "DB_HOST": "bookticket.cfq6602ckfk7.us-east-1.rds.amazonaws.com",
+      "DB_PORT": "5432",
+      "DB_NAME": "postgres"
+    }
+  }
+  

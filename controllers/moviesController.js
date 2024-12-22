@@ -59,12 +59,24 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
         s.id AS show_id,
         s.start_time,
         s.end_time,
-        s.price
+        json_agg(DISTINCT jsonb_build_object(
+          'category', ss.category,
+          'price', ss.price
+        )) AS prices,
+        COALESCE(
+          (SELECT ROUND((COUNT(CASE WHEN ss1.status = 'available' THEN 1 END) * 100.0) / COUNT(*), 2)
+           FROM ShowSeats ss1
+           WHERE ss1.show_id = s.id), 
+          0
+        ) AS availability_percentage
       FROM Movies m
       JOIN Shows s ON m.id = s.movie_id
       JOIN Screens scr ON s.screen_id = scr.id
       JOIN Theaters t ON scr.theater_id = t.id
+      JOIN ShowSeats ss ON ss.show_id = s.id
       WHERE s.movie_id = $1 AND t.location = $2
+      GROUP BY 
+        m.title, t.id, t.name, scr.id, scr.name, s.id, s.start_time, s.end_time
       ORDER BY t.id, s.start_time;
     `;
 
@@ -82,7 +94,8 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
         show_id,
         start_time,
         end_time,
-        price,
+        prices,
+        availability_percentage,
       } = row;
 
       // Capture movie name from the first row
@@ -106,11 +119,12 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
         id: show_id,
         start_time,
         end_time,
-        price,
         screen: {
           id: screen_id,
           name: screen_name,
         },
+        prices, // Include prices in the response
+        availability_percentage, // Include availability percentage
       });
 
       return acc;
@@ -122,3 +136,74 @@ exports.getTheatresAndShowsByMovie = async (req, res) => {
     res.status(500).json({ error: "Error fetching theatres and shows." });
   }
 };
+
+exports.getSeatsByShow = async (req, res) => {
+  const { showId } = req.params; // Extract showId from route parameters
+
+  if (!showId) {
+    return res.status(400).json({ error: "Show ID is required." });
+  }
+
+  try {
+    // Query to get seat details along with movie, theater, and screen details
+    const query = `
+      SELECT 
+          ss.id AS seat_id,
+          ss.seat_number,
+          ss.status,
+          ss.price,
+          ss.category,
+          m.title AS movie_name,
+          m.poster_url,
+          sh.start_time,
+          t.name AS theatre_name,
+          s.name AS screen_name
+      FROM ShowSeats ss
+      JOIN Shows sh ON ss.show_id = sh.id
+      JOIN Movies m ON sh.movie_id = m.id
+      JOIN Screens s ON sh.screen_id = s.id
+      JOIN Theaters t ON s.theater_id = t.id
+      WHERE ss.show_id = $1
+      ORDER BY ss.id;
+    `;
+
+    const result = await pool.query(query, [showId]);
+
+    // If no seats are found, return an empty array with movie details as null
+    if (result.rows.length === 0) {
+      return res.status(404).json({ 
+        movie_details: null, 
+        seats: [] 
+      });
+    }
+
+    // Extract movie details from the first row
+    const movieDetails = {
+      movie_name: result.rows[0].movie_name,
+      poster_url: result.rows[0].poster_url,
+      theatre_name: result.rows[0].theatre_name,
+      screen_name: result.rows[0].screen_name,
+      start_time: result.rows[0].start_time,
+    };
+
+    // Extract seat details
+    const seats = result.rows.map(row => ({
+      seat_id: row.seat_id,
+      seat_number: row.seat_number,
+      status: row.status,
+      price: row.price,
+      category: row.category,
+    }));
+
+    // Return the combined data
+    res.status(200).json({
+      movie_details: movieDetails,
+      seats: seats,
+    });
+  } catch (error) {
+    console.error("Error fetching seats for the show:", error);
+    res.status(500).json({ error: "Error fetching seats for the show." });
+  }
+};
+
+
