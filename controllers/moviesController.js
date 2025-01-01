@@ -40,9 +40,44 @@ exports.getMoviesByCity = async (req, res) => {
   }
 };
 
+exports.getMovieDetails = async(req, res) => {
+  const { movieId } = req.params;
+  const { city } = req.query;
+
+  if(!movieId || !city) {
+    return res.status(400).json({ error: "Movie ID and City parameters are required." })
+  }
+
+  try {
+    const query = `
+     SELECT 
+      m.title AS movie_name,
+      m.description,
+      m.duration,
+      m.genre,
+      m.release_date,
+      m.poster_url,
+      m.trailer_url,
+      m.cover_poster_url
+      FROM movies m
+      WHERE m.id = $1;
+    `;
+
+    const result = await pool.query(query, [movieId]);
+
+    const movieDetails = result.rows[0];
+
+    return res.status(200).json(movieDetails);
+  } catch(error) {
+    console.error("Error fetching movie details:", error);
+    return res.status(500).json({error: "Internal Server Error"});
+  }
+
+}
+
 exports.getTheatresAndShowsByMovie = async (req, res) => {
-  const { movieId } = req.params; // Extract movieId from route parameters
-  const { city } = req.query;    // Extract city from query parameters
+  const { movieId } = req.params;     
+  const { city } = req.query;    
 
   if (!movieId || !city) {
     return res.status(400).json({ error: "Movie ID and City parameters are required." });
